@@ -72,6 +72,12 @@ RC Db::create_table(const char *table_name, int attribute_count, const AttrInfo 
   // 文件路径可以移到Table模块
   std::string table_file_path = table_meta_file(path_.c_str(), table_name);
   Table *table = new Table();
+  while (table_addr_mp_.count(table)) {
+    LOG_INFO("same table address!");
+    table = new Table();
+  }
+  table_addr_mp_[table] = true;
+
   rc = table->create(table_file_path.c_str(), table_name, path_.c_str(), attribute_count, attributes, get_clog_manager());
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Failed to create table %s.", table_name);
@@ -83,6 +89,48 @@ RC Db::create_table(const char *table_name, int attribute_count, const AttrInfo 
   LOG_INFO("Create table success. table name=%s", table_name);
   return RC::SUCCESS;
 }
+
+RC Db::drop_table(const char *table_name)
+{
+  RC rc = RC::SUCCESS;
+  // check table name
+  if (opened_tables_.count(table_name) == 0) {
+    LOG_WARN("there is no table %s", table_name);
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+  Table *table = opened_tables_[table_name];
+  rc = table->drop();
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to drop table %s", table_name);
+    return rc;
+  }
+
+  opened_tables_.erase(table_name);
+  delete table;
+  LOG_INFO("Drop table success. table name=%s", table_name);
+  return rc;
+}
+
+RC Db::update_table(const char *relation_name, char *const *attributes, const Value *value, const size_t attr_num,
+    const size_t condition_num, const Condition *conditions, Trx *trx)
+{
+  RC rc = RC::SUCCESS;
+  if (opened_tables_.count(relation_name) == 0) {
+    LOG_WARN("there is no table %s", relation_name);
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+
+  Table *table = opened_tables_[relation_name];
+  int updated_cnt;
+  rc = table->update_record(trx, attributes, value, attr_num, condition_num, conditions, &updated_cnt);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to update table %s", relation_name);
+    return rc;
+  }
+  LOG_INFO("Update table success. table name=%s", relation_name);
+  return rc;
+}
+
 
 Table *Db::find_table(const char *table_name) const
 {
@@ -160,7 +208,7 @@ RC Db::recover()
 {
   RC rc = RC::SUCCESS;
   if ((rc = clog_manager_->recover()) == RC::SUCCESS) {
-    uint32_t max_trx_id = 0;
+    int32_t max_trx_id = 0;
     CLogMTRManager *mtr_manager = clog_manager_->get_mtr_manager();
     for (auto it = mtr_manager->log_redo_list.begin(); it != mtr_manager->log_redo_list.end(); it++) {
       CLogRecord *clog_record = *it;

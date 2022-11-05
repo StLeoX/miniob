@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <storage/trx/trx.h>
 
 #include "rc.h"
 #include "sql/parser/parse_defs.h"
@@ -33,6 +34,11 @@ public:
   RC init(const char *name, const char *dbpath);
 
   RC create_table(const char *table_name, int attribute_count, const AttrInfo *attributes);
+
+  RC drop_table(const char *table_name);
+
+  RC update_table(const char *relation_name, char *const *attributes, const Value *value, const size_t attr_num,
+      const size_t condition_num, const Condition *conditions, Trx *trx);
 
   Table *find_table(const char *table_name) const;
 
@@ -53,6 +59,7 @@ private:
   std::string name_;
   std::string path_;
   std::unordered_map<std::string, Table *> opened_tables_;
+  std::unordered_map<Table *, bool> table_addr_mp_;
   CLogManager *clog_manager_ = nullptr;
 };
 

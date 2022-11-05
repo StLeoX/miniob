@@ -17,13 +17,19 @@ See the Mulan PSL v2 for more details. */
 #ifndef __OBSERVER_STORAGE_COMMON_INDEX_MANAGER_H_
 #define __OBSERVER_STORAGE_COMMON_INDEX_MANAGER_H_
 
+#include <cstddef>
+#include <numeric>
 #include <string.h>
 #include <sstream>
 #include <functional>
+#include <string>
+#include <list>
+#include <vector>
 
 #include "storage/record/record_manager.h"
 #include "storage/default/disk_buffer_pool.h"
 #include "sql/parser/parse_defs.h"
+#include "util/util.h"
 #include "util/comparator.h"
 
 #define EMPTY_RID_PAGE_NUM -1
@@ -32,45 +38,70 @@ See the Mulan PSL v2 for more details. */
 class AttrComparator
 {
 public:
-  void init(AttrType type, int length)
-  {
-    attr_type_ = type;
-    attr_length_ = length;
+  void init(AttrType types[], int32_t lens[], int num) {
+    attr_types_ = types;
+    attr_lengths_ = lens;
+    num_ = num;
+    for (int i = 0; i < num; i++) {
+      sum_of_attr_lengths_ += lens[i];
+    }
   }
 
   int attr_length() const {
-    return attr_length_;
+    return sum_of_attr_lengths_;
   }
 
   int operator()(const char *v1, const char *v2) const {
-    switch (attr_type_) {
-    case INTS: {
-      return compare_int((void *)v1, (void *)v2);
+    int offset = 0;
+    for (int i = 0; i < num_; i++) {
+      bool left_is_null = v1[offset + attr_lengths_[i] - 1] == 1;
+      bool right_is_null = v2[offset + attr_lengths_[i] - 1] == 1;
+      if (left_is_null && right_is_null) {
+        continue;
+      } else if (left_is_null && !right_is_null) {
+        return -1;
+      } else if (!left_is_null && right_is_null) {
+        return 1;
+      }
+      int comp_res = 0;
+      switch (attr_types_[i]) {
+        case INTS: {
+          comp_res = compare_int((void *)(v1 + offset), (void *)(v2 + offset));
+        } break;
+        case FLOATS: {
+          comp_res = compare_float((void *)(v1 + offset), (void *)(v2 + offset));
+        } break;
+        case CHARS: {
+          comp_res = compare_string((void *)(v1 + offset), attr_lengths_[i] - 1, (void *)(v2 + offset), attr_lengths_[i] - 1);
+        } break;
+        case DATES: {
+          comp_res =  compare_date((void *)(v1 + offset), (void *)(v2 + offset));
+        } break;
+        default:{
+          LOG_ERROR("unknown attr type. %d", attr_types_[i]);
+          abort();
+        }
+      }
+      if (comp_res != 0) {
+        return comp_res;
+      }
+      offset += attr_lengths_[i];
     }
-      break;
-    case FLOATS: {
-      return compare_float((void *)v1, (void *)v2);
-    }
-    case CHARS: {
-      return compare_string((void *)v1, attr_length_, (void *)v2, attr_length_);
-    }
-    default:{
-      LOG_ERROR("unknown attr type. %d", attr_type_);
-      abort();
-    }
-    }
+    return 0;
   }
 private:
-  AttrType attr_type_;
-  int attr_length_;
+  AttrType *attr_types_;
+  int *attr_lengths_;
+  int num_;
+  int sum_of_attr_lengths_;
 };
 
 class KeyComparator
 {
 public:
-  void init(AttrType type, int length)
-  {
-    attr_comparator_.init(type, length);
+  void init(AttrType types[], int32_t lens[], int num, bool check_dup) {
+    check_dup_ = check_dup;
+    attr_comparator_.init(types, lens, num);
   }
 
   const AttrComparator &attr_comparator() const {
@@ -79,7 +110,7 @@ public:
 
   int operator() (const char *v1, const char *v2) const {
     int result = attr_comparator_(v1, v2);
-    if (result != 0) {
+    if (check_dup_ || result != 0) {
       return result;
     }
 
@@ -90,6 +121,7 @@ public:
 
 private:
   AttrComparator attr_comparator_;
+  bool check_dup_;
 };
 
 class AttrPrinter
@@ -106,6 +138,10 @@ public:
   }
 
   std::string operator()(const char *v) const {
+    // null
+    if (v[attr_length_ - 1] == 1) {
+      return "null";
+    }
     switch (attr_type_) {
     case INTS: {
       return std::to_string(*(int*)v);
@@ -114,13 +150,16 @@ public:
     case FLOATS: {
       return std::to_string(*(float*)v);
     }
+    case DATES: {
+      return date_to_string(*(int*)v);
+    }
     case CHARS: {
       std::string str;
       for (int i = 0; i < attr_length_; i++) {
-	if (v[i] == 0) {
-	  break;
-	}
-	str.push_back(v[i]);
+        if (v[i] == 0) {
+          break;
+        }
+        str.push_back(v[i]);
       }
       return str;
     }
@@ -138,12 +177,18 @@ private:
 class KeyPrinter
 {
 public:
-  void init(AttrType type, int length)
+  void init(AttrType type, int len)
   {
-    attr_printer_.init(type, length);
+    attr_printer_.init(type, len);
+    // for (size_t i = 0; i < types.size(); i++) {
+    //   AttrPrinter pt;
+    //   pt.init(types[i], lens[i]);
+    //   attr_printers_.push_back(pt);
+    // }
+
   }
 
-  const AttrPrinter &attr_printer() const {
+  const AttrPrinter &attr_printers() const {
     return attr_printer_;
   }
 
@@ -174,17 +219,23 @@ struct IndexFileHeader {
   PageNum  root_page;
   int32_t  internal_max_size;
   int32_t  leaf_max_size;
-  int32_t  attr_length;
+  int32_t  attr_num;
+  int32_t  attr_lengths[20];
+  AttrType attr_types[20];
+  int32_t sum_of_attr_lengths;
+  // int32_t  attr_length;
   int32_t  key_length; // attr length + sizeof(RID)
-  AttrType attr_type;
+  // AttrType attr_type;
 
   const std::string to_string()
   {
     std::stringstream ss;
-
-    ss << "attr_length:" << attr_length << ","
-       << "key_length:" << key_length << ","
-       << "attr_type:" << attr_type << ","
+    ss << "[type, length]: ";
+    for (int i = 0; i < attr_num; i++) {
+      ss << "[" << attr_types[i] << ", " << attr_lengths[i] << "] ";
+    }
+    ss << ", ";
+    ss << "key_length:" << key_length << ","
        << "root_page:" << root_page << ","
        << "internal_max_size:" << internal_max_size << ","
        << "leaf_max_size:" << leaf_max_size << ";";
@@ -385,8 +436,8 @@ public:
    * 此函数创建一个名为fileName的索引。
    * attrType描述被索引属性的类型，attrLength描述被索引属性的长度
    */
-  RC create(const char *file_name, AttrType attr_type, int attr_length,
-	    int internal_max_size = -1, int leaf_max_size = -1);
+  RC create(const char *file_name, std::vector<AttrType> attr_type, std::vector<int> attr_length,
+            bool unique, int internal_max_size = -1, int leaf_max_size = -1);
 
   /**
    * 打开名为fileName的索引文件。
@@ -406,14 +457,16 @@ public:
    * 即向索引中插入一个值为（user_key，rid）的键值对
    * @note 这里假设user_key的内存大小与attr_length 一致
    */
-  RC insert_entry(const char *user_key, const RID *rid);
+  RC insert_entry(const std::vector<const char *> &user_keys, const RID *rid);
+  // RC insert_entry(const char *user_key, const RID *rid);
 
   /**
    * 从IndexHandle句柄对应的索引中删除一个值为（*pData，rid）的索引项
    * @return RECORD_INVALID_KEY 指定值不存在
    * @note 这里假设user_key的内存大小与attr_length 一致
    */
-  RC delete_entry(const char *user_key, const RID *rid);
+  RC delete_entry(const std::vector<const char *> &user_keys, const RID *rid);
+  // RC delete_entry(const char *user_key, const RID *rid);
 
   bool is_empty() const;
 
@@ -432,6 +485,10 @@ public:
    * @return
    */
   bool validate_tree();
+
+  void set_unique(bool f) {
+    unique_ = f;
+  }
 
 public:
   RC print_tree();
@@ -476,9 +533,12 @@ protected:
   RC adjust_root(Frame *root_frame);
 
 private:
-  char *make_key(const char *user_key, const RID &rid);
+  // char *make_key(const char *user_key, const RID &rid);
+  char *make_key(const std::vector<const char *> &user_keys, const RID &rid);
+  char *make_key(const char * &user_keys, const RID &rid);
   void  free_key(char *key);
 protected:
+  bool unique_ = false;
   DiskBufferPool *disk_buffer_pool_ = nullptr;
   bool header_dirty_ = false;
   IndexFileHeader file_header_;
@@ -518,8 +578,7 @@ private:
   /**
    * 如果key的类型是CHARS, 扩展或缩减user_key的大小刚好是schema中定义的大小
    */
-  RC fix_user_key(const char *user_key, int key_len, bool want_greater,
-		  char **fixed_key, bool *should_inclusive);
+  // RC fix_user_key(const char *user_key, int key_len, bool want_greater, char **fixed_key, bool *should_inclusive);
 private:
   bool inited_ = false;
   BplusTreeHandler &tree_handler_;

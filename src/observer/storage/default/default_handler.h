@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include <string>
 #include <map>
+#include <string>
 
 #include "storage/common/db.h"
 
@@ -99,8 +100,9 @@ public:
    * ②逐个扫描被索引的记录，并向索引文件中插入索引项；③关闭索引
    * @return
    */
-  RC create_index(
-      Trx *trx, const char *dbname, const char *relation_name, const char *index_name, const char *attribute_name);
+  RC create_index(Trx *trx, const char *dbname, const char *relation_name, const char *index_name, char *const *attribute_names, int attribute_num);
+  /*RC create_index(
+      Trx *trx, const char *dbname, const char *relation_name, const char *index_name, const char *attribute_name);*/
 
   /**
    * 该函数用来删除名为indexName的索引。

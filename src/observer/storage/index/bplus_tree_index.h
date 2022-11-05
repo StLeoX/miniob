@@ -15,16 +15,20 @@ See the Mulan PSL v2 for more details. */
 #ifndef __OBSERVER_STORAGE_COMMON_BPLUS_TREE_INDEX_H_
 #define __OBSERVER_STORAGE_COMMON_BPLUS_TREE_INDEX_H_
 
+#include "storage/common/field_meta.h"
 #include "storage/index/index.h"
 #include "storage/index/bplus_tree.h"
+#include <vector>
 
 class BplusTreeIndex : public Index {
 public:
   BplusTreeIndex() = default;
   virtual ~BplusTreeIndex() noexcept;
 
-  RC create(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta);
-  RC open(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta);
+  // RC create(const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta);
+  // RC create(const char *file_name, const IndexMeta &index_meta, const std::vector<const FieldMeta *> metas);
+  RC create(const char *file_name, const IndexMeta &index_meta, const std::vector<FieldMeta> &metas);
+  RC open(const char *file_name, const IndexMeta &index_meta, const std::vector<FieldMeta> &field_metas);
   RC close();
 
   RC insert_entry(const char *record, const RID *rid) override;
@@ -37,6 +41,10 @@ public:
 			       const char *right_key, int right_len, bool right_inclusive) override;
 
   RC sync() override;
+
+  void set_unique(bool f) override {
+    index_handler_.set_unique(f);
+  }
 
 private:
   bool inited_ = false;

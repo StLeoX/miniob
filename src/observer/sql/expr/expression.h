@@ -15,10 +15,13 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include <string.h>
+// #include "sql/executor/execute_stage.h"
+#include "sql/parser/parse_defs.h"
 #include "storage/common/field.h"
 #include "sql/expr/tuple_cell.h"
 
 class Tuple;
+class Pretable;
 
 enum class ExprType {
   NONE,
@@ -69,7 +72,11 @@ public:
   {
     return field_.field_name();
   }
-
+  bool operator==(const FieldExpr &rhs) const;
+  bool operator!=(const FieldExpr &rhs) const;
+  const std::string to_string() const {
+    return "table.field: "+std::string(table_name())+"."+std::string(field_name());
+  }
   RC get_value(const Tuple &tuple, TupleCell &cell) const override;
 private:
   Field field_;
@@ -85,6 +92,8 @@ public:
       tuple_cell_.set_length(strlen((const char *)value.data));
     }
   }
+  ValueExpr(Pretable *table) : pretable_(table) {}
+  ValueExpr(const TupleCell &ts) : tuple_cell_(ts){}
 
   virtual ~ValueExpr() = default;
 
@@ -94,10 +103,25 @@ public:
     return ExprType::VALUE;
   }
 
+  AttrType get_type() const {
+    return tuple_cell_.attr_type();
+  }
+
   void get_tuple_cell(TupleCell &cell) const {
     cell = tuple_cell_;
   }
 
+  char *get_data() {
+    return tuple_cell_.get_data();
+  }
+
+  bool is_pretable() {
+    return pretable_ != nullptr;
+  }
+
+  Pretable *pretable() { return pretable_; }
+
 private:
   TupleCell tuple_cell_;
+  Pretable *pretable_ = nullptr;
 };

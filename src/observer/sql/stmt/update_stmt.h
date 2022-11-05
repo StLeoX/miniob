@@ -15,28 +15,47 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include "rc.h"
+#include "sql/parser/parse_defs.h"
+#include "sql/stmt/filter_stmt.h"
 #include "sql/stmt/stmt.h"
+#include "storage/common/field_meta.h"
+#include <vector>
 
+class FieldMeta;
+class FilterStmt;
+class Db;
 class Table;
+
 
 class UpdateStmt : public Stmt
 {
 public:
 
   UpdateStmt() = default;
-  UpdateStmt(Table *table, Value *values, int value_amount);
+
+  StmtType type() const override { return StmtType::UPDATE; }
 
 public:
-  static RC create(Db *db, const Updates &update_sql, Stmt *&stmt);
+  static RC create(Db *db, Updates &update_sql, Stmt *&stmt);
 
 public:
   Table *table() const {return table_;}
-  Value *values() const { return values_; }
-  int value_amount() const { return value_amount_; }
+  int attr_num() const { return values_.size(); }
+  Value *value(int i) { return values_[i]; }
+  std::vector<Value *> &values() { return values_; }
+  std::vector<const FieldMeta *> &metas() { return attr_metas_; }
+  const FieldMeta *attr_meta(int i) const { return attr_metas_[i]; }
+  const Condition *conditions() const { return conditions_; }
+  int condition_num() const { return condition_num_; }
 
 private:
   Table *table_ = nullptr;
-  Value *values_ = nullptr;
-  int value_amount_ = 0;
+  std::vector<Value *> values_;
+  std::vector<const FieldMeta *> attr_metas_;
+  Condition *conditions_;
+  int condition_num_;
+  // Value *value_ = nullptr;
+  // const FieldMeta *attr_meta_ = nullptr;
+  // FilterStmt *filter_stmt_ = nullptr;
 };
 

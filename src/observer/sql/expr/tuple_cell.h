@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include <iostream>
+#include "sql/parser/parse_defs.h"
 #include "storage/common/table.h"
 #include "storage/common/field_meta.h"
 
@@ -25,10 +26,17 @@ public:
   
   TupleCell(FieldMeta *meta, char *data)
     : TupleCell(meta->type(), data)
-  {}
+  {
+    length_ = meta->len();
+  }
   TupleCell(AttrType attr_type, char *data)
     : attr_type_(attr_type), data_(data)
   {}
+  TupleCell(const TupleCell &tupleCell)
+    : TupleCell(tupleCell.attr_type_, tupleCell.data_)
+  {
+    length_ = tupleCell.length_;
+  }
 
   void set_type(AttrType type) { this->attr_type_ = type; }
   void set_length(int length) { this->length_ = length; }
@@ -40,6 +48,11 @@ public:
   int compare(const TupleCell &other) const;
 
   const char *data() const
+  {
+    return data_;
+  }
+
+  char *get_data()
   {
     return data_;
   }

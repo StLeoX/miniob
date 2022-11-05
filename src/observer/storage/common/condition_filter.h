@@ -17,6 +17,8 @@ See the Mulan PSL v2 for more details. */
 
 #include "rc.h"
 #include "sql/parser/parse.h"
+#include "sql/parser/parse_defs.h"
+// #include "storage/common/db.h"
 
 class Record;
 class Table;
@@ -45,7 +47,7 @@ public:
   DefaultConditionFilter();
   virtual ~DefaultConditionFilter();
 
-  RC init(const ConDesc &left, const ConDesc &right, AttrType attr_type, CompOp comp_op);
+  RC init(const ConDesc &left, const ConDesc &right, AttrType type_left, AttrType type_right, CompOp comp_op);
   RC init(Table &table, const Condition &condition);
 
   virtual bool filter(const Record &rec) const;
@@ -66,12 +68,16 @@ public:
     return comp_op_;
   }
 
-  AttrType attr_type() const { return attr_type_; }
+  AttrType left_type() const { return left_type_; }
+  AttrType right_type() const { return right_type_; }
+
+  // AttrType attr_type() const { return attr_type_; }
 
 private:
   ConDesc left_;
   ConDesc right_;
-  AttrType attr_type_ = UNDEFINED;
+  AttrType left_type_ = UNDEFINED;
+  AttrType right_type_ = UNDEFINED;
   CompOp comp_op_ = NO_OP;
 };
 

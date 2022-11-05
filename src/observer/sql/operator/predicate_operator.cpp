@@ -13,10 +13,16 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "common/log/log.h"
+#include "sql/expr/expression.h"
+#include "sql/executor/execute_stage.h"
+#include "util/util.h"
 #include "sql/operator/predicate_operator.h"
+#include "sql/parser/parse_defs.h"
 #include "storage/record/record.h"
 #include "sql/stmt/filter_stmt.h"
 #include "storage/common/field.h"
+#include <cstring>
+#include <vector>
 
 RC PredicateOperator::open()
 {
@@ -32,7 +38,7 @@ RC PredicateOperator::next()
 {
   RC rc = RC::SUCCESS;
   Operator *oper = children_[0];
-  
+
   while (RC::SUCCESS == (rc = oper->next())) {
     Tuple *tuple = oper->current_tuple();
     if (nullptr == tuple) {
@@ -54,7 +60,7 @@ RC PredicateOperator::close()
   return RC::SUCCESS;
 }
 
-Tuple * PredicateOperator::current_tuple()
+Tuple *PredicateOperator::current_tuple()
 {
   return children_[0]->current_tuple();
 }
@@ -72,32 +78,67 @@ bool PredicateOperator::do_predicate(RowTuple &tuple)
     TupleCell left_cell;
     TupleCell right_cell;
     left_expr->get_value(tuple, left_cell);
+    // note: 应当能算出来外面的exists的已经补全的左部
+    LOG_DEBUG("exists? %d \n",comp == VALUE_EXISTS || comp == VALUE_NOT_EXISTS);
+    std::stringstream  ss;
+    left_cell.to_string(ss);
+    LOG_DEBUG("left: %s \n", ss.str().c_str());
     right_expr->get_value(tuple, right_cell);
 
-    const int compare = left_cell.compare(right_cell);
+    // NULL COMPARE
+    // TODO: type check
     bool filter_result = false;
-    switch (comp) {
-    case EQUAL_TO: {
-      filter_result = (0 == compare); 
-    } break;
-    case LESS_EQUAL: {
-      filter_result = (compare <= 0); 
-    } break;
-    case NOT_EQUAL: {
-      filter_result = (compare != 0);
-    } break;
-    case LESS_THAN: {
-      filter_result = (compare < 0);
-    } break;
-    case GREAT_EQUAL: {
-      filter_result = (compare >= 0);
-    } break;
-    case GREAT_THAN: {
-      filter_result = (compare > 0);
-    } break;
-    default: {
-      LOG_WARN("invalid compare type: %d", comp);
-    } break;
+    if (comp == VALUE_IN) {
+      ValueExpr *right_value_expr = dynamic_cast<ValueExpr *>(right_expr);
+      filter_result = right_value_expr->pretable()->in(left_cell);
+    } else if (comp == VALUE_NOT_IN) {
+      ValueExpr *right_value_expr = dynamic_cast<ValueExpr *>(right_expr);
+      filter_result = right_value_expr->pretable()->not_in(left_cell);
+    }else if (comp == VALUE_EXISTS) {
+      ValueExpr *right_value_expr = dynamic_cast<ValueExpr *>(right_expr);
+      filter_result = right_value_expr->pretable()->exists(left_cell);
+    } else if (comp == VALUE_NOT_EXISTS) {
+      ValueExpr *right_value_expr = dynamic_cast<ValueExpr *>(right_expr);
+      filter_result = right_value_expr->pretable()->not_exists(left_cell);
+    } else if (left_cell.attr_type() == UNDEFINED || right_cell.attr_type() == UNDEFINED) {
+      return false;
+    } else if (left_cell.attr_type() == AttrType::NULLS && right_cell.attr_type() == AttrType::NULLS &&
+               comp == IS_EQUAL) {
+      filter_result = true;
+    } else if (left_cell.attr_type() != AttrType::NULLS && right_cell.attr_type() == AttrType::NULLS &&
+               comp == IS_NOT_EQUAL) {
+      filter_result = true;
+    } else if (left_cell.attr_type() == AttrType::NULLS || right_cell.attr_type() == AttrType::NULLS) {
+      return false;
+    } else if (comp == STR_LIKE) {
+      filter_result = string_like(left_cell.data(), right_cell.data());
+    } else if (comp == STR_NOT_LIKE) {
+      filter_result = !string_like(left_cell.data(), right_cell.data());
+    } else {
+      const int compare = left_cell.compare(right_cell);
+      switch (comp) {
+        case EQUAL_TO: {
+          filter_result = (0 == compare);
+        } break;
+        case LESS_EQUAL: {
+          filter_result = (compare <= 0);
+        } break;
+        case NOT_EQUAL: {
+          filter_result = (compare != 0);
+        } break;
+        case LESS_THAN: {
+          filter_result = (compare < 0);
+        } break;
+        case GREAT_EQUAL: {
+          filter_result = (compare >= 0);
+        } break;
+        case GREAT_THAN: {
+          filter_result = (compare > 0);
+        } break;
+        default: {
+          LOG_WARN("invalid compare type: %d", comp);
+        } break;
+      }
     }
     if (!filter_result) {
       return false;

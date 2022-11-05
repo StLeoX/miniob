@@ -18,7 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/operator.h"
 #include "rc.h"
 
-// TODO fixme
+// TODO: join support
 class JoinOperator : public Operator
 {
 public:

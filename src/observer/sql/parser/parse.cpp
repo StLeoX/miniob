@@ -8,20 +8,21 @@ EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
-//
-// Created by Meiyi 
-//
+// by StLeoX
 
 #include <mutex>
 #include "sql/parser/parse.h"
 #include "rc.h"
 #include "common/log/log.h"
+#include "sql/parser/parse_defs.h"
+#include "sql/parser/yacc_sql.tab.h"
 
 RC parse(char *st, Query *sqln);
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
 void relation_attr_init(RelAttr *relation_attr, const char *relation_name, const char *attribute_name)
 {
   if (relation_name != nullptr) {
@@ -30,6 +31,45 @@ void relation_attr_init(RelAttr *relation_attr, const char *relation_name, const
     relation_attr->relation_name = nullptr;
   }
   relation_attr->attribute_name = strdup(attribute_name);
+  relation_attr->type = A_NO;
+  relation_attr->print_attr = false;
+}
+
+void aggregation_attr_init(RelAttr *relation_attr, const char *relation_name, const char *attribute_name, AggreType type, int is_digit)
+{
+  if (relation_name != nullptr) {
+    relation_attr->relation_name = strdup(relation_name);
+  } else {
+    relation_attr->relation_name = nullptr;
+  }
+  relation_attr->attribute_name = strdup(attribute_name);
+  relation_attr->type = type;
+  relation_attr->print_attr = is_digit;
+}
+void aggregation_attr_init_expression(RelAttr *relation_attr, const char *relation_name, const char *attribute_name,
+    AggreType type, int is_digit, ast *a){
+  aggregation_attr_init(relation_attr,relation_name,attribute_name,type,is_digit);
+  // todo: relation_attr里面没有字段去接value？
+  switch (a->type) {
+    // 负值相关操作
+    case ExpType::SUBN: {
+      assert(a->l== nullptr && a->r!= nullptr);
+      Value &v=((ast_val*)a)->value;
+      if (v.type == AttrType::INTS)
+        *((int *)v.data) = -*((int *)v.data);
+      else if (v.type == AttrType::FLOATS)
+        *((float *)v.data) = -*((float *)v.data);
+      auto _ = v;
+    } break;
+    case ExpType::VALN: {
+      auto _=((ast_val*)a)->value;
+    } break;
+    case ExpType::ATTRN:{
+
+    }break;
+    default:
+      break;
+  }
 }
 
 void relation_attr_destroy(RelAttr *relation_attr)
@@ -40,28 +80,122 @@ void relation_attr_destroy(RelAttr *relation_attr)
   relation_attr->attribute_name = nullptr;
 }
 
+void value_init_null(Value *value)
+{
+  value->type = NULLS;
+  value->data = malloc(sizeof(int)+1);
+  value->select = nullptr;
+  value->value_list = nullptr;
+  ((char *)value->data)[sizeof(int)] = 1;
+}
+
 void value_init_integer(Value *value, int v)
 {
   value->type = INTS;
-  value->data = malloc(sizeof(v));
+  value->data = malloc(sizeof(v)+1);
+  value->select = nullptr;
+  value->value_list = nullptr;
+  memset(value->data, 0, 5);
   memcpy(value->data, &v, sizeof(v));
+}
+bool is_leap(int y)
+{
+  return (((y % 4 == 0) &&
+           (y % 100 != 0)) ||
+           (y % 400 == 0));
+}
+
+bool check_date(int y, int m, int d)
+{
+  if (m < 1 || m > 12) {
+    return false;
+  }
+
+  if (d < 1 || d > 31) {
+    return false;
+  }
+
+  if (m == 2) {
+    if (is_leap(y))
+      return (d <= 29);
+    else
+      return (d <= 28);
+  }
+
+  if (m == 4 || m == 6 ||
+      m == 9 || m == 11) {
+    return (d <= 30);
+  }
+  return true;
+}
+
+void value_init_date(Value *value, const char* v)
+{
+  value->type = DATES;
+  value->select = nullptr;
+  value->value_list = nullptr;
+  int y, m, d;
+  std::sscanf(v, "'%d-%d-%d'", &y, &m, &d);
+
+  int dv = y * 10000 + m * 100 + d;
+  value->data = malloc(sizeof(int)+1);
+  memset(value->data, 0, 5);
+  bool b = check_date(y, m, d);
+  if (!b) {
+    dv = -1;
+  }
+  memcpy(value->data, &dv, sizeof(int));
 }
 void value_init_float(Value *value, float v)
 {
   value->type = FLOATS;
-  value->data = malloc(sizeof(v));
+  value->select = nullptr;
+  value->value_list = nullptr;
+  value->data = malloc(sizeof(v)+1);
+  memset(value->data, 0, 5);
   memcpy(value->data, &v, sizeof(v));
 }
+
+// max length is 4096, therefore we need 4098 space
 void value_init_string(Value *value, const char *v)
 {
+  LOG_INFO("init string: %s\n", v);
   value->type = CHARS;
-  value->data = strdup(v);
+  value->select = nullptr;
+  value->value_list = nullptr;
+  int len = strlen(v);
+  if (len >= 4096) {
+    len = 4096;
+  }
+  value->data = malloc(len+2);
+  memset(value->data, 0, len+2);
+  memcpy(value->data, v, len);
 }
+void value_init_select(Value *value, Selects *selects)
+{
+  value->type = SELECTS;
+  value->select = selects;
+  value->value_list = nullptr;
+  value->data = nullptr;
+}
+
+void value_init_list(Value *value, ValueList *valuelist)
+{
+  value->type = VALUELIST;
+  value->value_list = valuelist;
+  value->select = nullptr;
+  value->data = nullptr;
+}
+
 void value_destroy(Value *value)
 {
-  value->type = UNDEFINED;
-  free(value->data);
+
   value->data = nullptr;
+  value->select = nullptr;
+  if (value->type != SELECTS) {
+    free(value->data);
+  }
+  value->type = UNDEFINED;
 }
 
 void condition_init(Condition *condition, CompOp comp, int left_is_attr, RelAttr *left_attr, Value *left_value,
@@ -96,11 +230,17 @@ void condition_destroy(Condition *condition)
   }
 }
 
-void attr_info_init(AttrInfo *attr_info, const char *name, AttrType type, size_t length)
+void attr_info_init(AttrInfo *attr_info, const char *name, AttrType type, size_t length, int nullable)
 {
   attr_info->name = strdup(name);
+  // 使用chars类型作为texts的底层实现
+  if(type == AttrType::TEXTS){
+    type = AttrType::CHARS;
+  }
   attr_info->type = type;
-  attr_info->length = length;
+  // For NULLS
+  attr_info->length = length + 1;
+  attr_info->nullable = nullable;
 }
 void attr_info_destroy(AttrInfo *attr_info)
 {
@@ -109,22 +249,72 @@ void attr_info_destroy(AttrInfo *attr_info)
 }
 
 void selects_init(Selects *selects, ...);
+void selects_reverse_relations(Selects *selects, int len)
+{
+  for (int i = 0; i < len / 2; i++) {
+    int j = i + selects->relation_num - len;
+    char *tp = selects->relations[j];
+    selects->relations[j] = selects->relations[selects->relation_num-1-j];
+    selects->relations[selects->relation_num-1-j] = tp;
+  }
+}
 void selects_append_attribute(Selects *selects, RelAttr *rel_attr)
 {
+  LOG_INFO("append attribute %s to %s\n",rel_attr->attribute_name, selects->relations[0]);
   selects->attributes[selects->attr_num++] = *rel_attr;
+  if (rel_attr->type != AggreType::A_NO) {
+    selects->aggregate_num++;
+  }
 }
+void selects_append_attribute_expression(Selects *selects,ast* a)
+{
+  if(a->type==ExpType::ATTRN){
+    selects_append_attribute(selects,&(((ast_attr *)a)->attr));
+    return;
+  }
+  selects->attributes_exp[selects->attr_exp_num++] = a;
+}
+void selects_append_in_value(ValueList *valuelist, Value *value)
+{
+  valuelist->values[valuelist->value_num++] = *value;
+}
+void selects_append_groupby(Selects *selects, RelAttr *groupby_attr)
+{
+  selects->groupby_attrs[selects->groupby_num++] = *groupby_attr;
+}
+
 void selects_append_relation(Selects *selects, const char *relation_name)
 {
+  LOG_INFO("append relation %s\n", relation_name);
   selects->relations[selects->relation_num++] = strdup(relation_name);
+}
+
+void selects_append_order_field(Selects *selects, RelAttr* attr, size_t is_desc)
+{
+  selects->order_fields[selects->order_by_num].attr = *attr;
+  selects->order_fields[selects->order_by_num].is_desc = is_desc;
+  selects->order_by_num++;
 }
 
 void selects_append_conditions(Selects *selects, Condition conditions[], size_t condition_num)
 {
   assert(condition_num <= sizeof(selects->conditions) / sizeof(selects->conditions[0]));
+  LOG_INFO("append conditions to %s, num %zu, ", selects->relations[0], condition_num);
   for (size_t i = 0; i < condition_num; i++) {
+    LOG_DEBUG("op: %d", conditions[i].comp);
     selects->conditions[i] = conditions[i];
   }
+  LOG_DEBUG("\n");
   selects->condition_num = condition_num;
+}
+
+void selects_append_having_conditions(Selects* selects, Condition having_conditions[],
+                                      size_t having_condition_num)
+{
+  for (size_t i = 0; i < having_condition_num; i++) {
+    selects->having_conditions[i] = having_conditions[i];
+  }
+  selects->having_num = having_condition_num;
 }
 
 void selects_destroy(Selects *selects)
@@ -146,25 +336,33 @@ void selects_destroy(Selects *selects)
   selects->condition_num = 0;
 }
 
-void inserts_init(Inserts *inserts, const char *relation_name, Value values[], size_t value_num)
+void inserts_init(Inserts *inserts, const char *relation_name)
 {
-  assert(value_num <= sizeof(inserts->values) / sizeof(inserts->values[0]));
-
+  // assert(value_num <= sizeof(inserts->values) / sizeof(inserts->values[0]));
   inserts->relation_name = strdup(relation_name);
-  for (size_t i = 0; i < value_num; i++) {
-    inserts->values[i] = values[i];
-  }
-  inserts->value_num = value_num;
+
 }
 void inserts_destroy(Inserts *inserts)
 {
   free(inserts->relation_name);
   inserts->relation_name = nullptr;
 
-  for (size_t i = 0; i < inserts->value_num; i++) {
-    value_destroy(&inserts->values[i]);
+  for (size_t i = 0; i < inserts->valuelist_num; i++) {
+    for (int j = 0; j < inserts->valuelist[i].value_num; j++) {
+      value_destroy(&inserts->valuelist[i].values[j]);
+    }
+    inserts->valuelist[i].value_num = 0;
   }
-  inserts->value_num = 0;
+  inserts->valuelist_num = 0;
+}
+
+
+void inserts_append_values(Inserts *inserts, Value values[], size_t value_num)
+{
+  for (size_t i = 0; i < value_num; i++) {
+    inserts->valuelist[inserts->valuelist_num].values[i] = values[i];
+  }
+  inserts->valuelist[inserts->valuelist_num++].value_num = value_num;
 }
 
 void deletes_init_relation(Deletes *deletes, const char *relation_name)
@@ -190,12 +388,9 @@ void deletes_destroy(Deletes *deletes)
   deletes->relation_name = nullptr;
 }
 
-void updates_init(Updates *updates, const char *relation_name, const char *attribute_name, Value *value,
-    Condition conditions[], size_t condition_num)
+void updates_init(Updates *updates, const char *relation_name, Condition conditions[], size_t condition_num)
 {
   updates->relation_name = strdup(relation_name);
-  updates->attribute_name = strdup(attribute_name);
-  updates->value = *value;
 
   assert(condition_num <= sizeof(updates->conditions) / sizeof(updates->conditions[0]));
   for (size_t i = 0; i < condition_num; i++) {
@@ -204,14 +399,22 @@ void updates_init(Updates *updates, const char *relation_name, const char *attri
   updates->condition_num = condition_num;
 }
 
+void updates_append(Updates *updates, const char *attribute_name, Value *value)
+{
+  updates->attributes[updates->attribute_num] = strdup(attribute_name);
+  updates->values[updates->attribute_num++] = *value;
+}
+
 void updates_destroy(Updates *updates)
 {
   free(updates->relation_name);
-  free(updates->attribute_name);
-  updates->relation_name = nullptr;
-  updates->attribute_name = nullptr;
+  for (int i = 0; i < updates->attribute_num; i++) {
+    free(updates->attributes[i]);
+    updates->attributes[i] = nullptr;
+    value_destroy(&updates->values[i]);
+  }
 
-  value_destroy(&updates->value);
+  updates->relation_name = nullptr;
 
   for (size_t i = 0; i < updates->condition_num; i++) {
     condition_destroy(&updates->conditions[i]);
@@ -250,23 +453,41 @@ void drop_table_destroy(DropTable *drop_table)
   drop_table->relation_name = nullptr;
 }
 
+void create_index_append(CreateIndex *create_index, const char *attribute_name)
+{
+  create_index->attribute_names[create_index->attribute_num++] = strdup(attribute_name);
+}
+
 void create_index_init(
-    CreateIndex *create_index, const char *index_name, const char *relation_name, const char *attr_name)
+    CreateIndex *create_index, const char *index_name, const char *relation_name, int unique)
 {
   create_index->index_name = strdup(index_name);
   create_index->relation_name = strdup(relation_name);
-  create_index->attribute_name = strdup(attr_name);
+  for (int i = 0; i < create_index->attribute_num / 2; i++) {
+    char *tp = create_index->attribute_names[i];
+    create_index->attribute_names[i] = create_index->attribute_names[create_index->attribute_num - i - 1];
+    create_index->attribute_names[create_index->attribute_num - i - 1] = tp;
+  }
+  // create_index->attribute_name = strdup(attr_name);
+  create_index->unique = unique;
+}
+
+void show_index_init(ShowIndex *show_index, const char *relation_name)
+{
+  show_index->relation_name = strdup(relation_name);
 }
 
 void create_index_destroy(CreateIndex *create_index)
 {
   free(create_index->index_name);
   free(create_index->relation_name);
-  free(create_index->attribute_name);
+  for (int i = 0; i < create_index->attribute_num; i++) {
+    free(create_index->attribute_names[i]);
+    create_index->attribute_names[i] = nullptr;
+  }
 
   create_index->index_name = nullptr;
   create_index->relation_name = nullptr;
-  create_index->attribute_name = nullptr;
 }
 
 void drop_index_init(DropIndex *drop_index, const char *index_name)
@@ -318,6 +539,12 @@ void query_init(Query *query)
 {
   query->flag = SCF_ERROR;
   memset(&query->sstr, 0, sizeof(query->sstr));
+  query->selects_num = 0;
+  query->valuelist_num = 0;
+  for (int i = 0; i < MAX_NUM; i++) {
+    memset(&query->valuelists[i], 0, sizeof(query->valuelists[i]));
+    memset(&query->selects[i], 0, sizeof(query->selects[i]));
+  }
 }
 
 Query *query_create()
@@ -334,9 +561,12 @@ Query *query_create()
 
 void query_reset(Query *query)
 {
+  for (int i = 1; i <= query->selects_num; i++) {
+    selects_destroy(&query->selects[i]);
+  }
   switch (query->flag) {
     case SCF_SELECT: {
-      selects_destroy(&query->sstr.selection);
+      // selects_destroy(query->sstr.selection);
     } break;
     case SCF_INSERT: {
       inserts_destroy(&query->sstr.insertion);
@@ -379,6 +609,7 @@ void query_reset(Query *query)
     case SCF_HELP:
     case SCF_EXIT:
     case SCF_ERROR:
+    case SCF_SHOW_INDEX:
       break;
   }
 }

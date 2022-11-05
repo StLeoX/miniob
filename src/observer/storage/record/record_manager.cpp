@@ -256,7 +256,7 @@ RC RecordPageHandler::delete_record(const RID *rid)
   Bitmap bitmap(bitmap_, page_header_->record_capacity);
   if (bitmap.get_bit(rid->slot_num)) {
     bitmap.clear_bit(rid->slot_num);
-    page_header_->record_num--;
+    // page_header_->record_num--;
     frame_->mark_dirty();
 
     if (page_header_->record_num == 0) {

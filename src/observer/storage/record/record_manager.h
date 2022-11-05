@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 
 #include <sstream>
 #include <limits>
+#include <unordered_set>
 #include "storage/default/disk_buffer_pool.h"
 #include "storage/record/record.h"
 #include "common/lang/bitmap.h"

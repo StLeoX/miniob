@@ -16,6 +16,9 @@ See the Mulan PSL v2 for more details. */
 #define __OBSERVER_STORAGE_COMMON_TABLE_H__
 
 #include "storage/common/table_meta.h"
+#include <sstream>
+#include <string>
+#include <vector>
 
 struct RID;
 class Record;
@@ -47,6 +50,7 @@ public:
    */
   RC create(const char *path, const char *name, const char *base_dir, int attribute_count, const AttrInfo attributes[],
       CLogManager *clog_manager);
+  RC drop();
 
   /**
    * 打开一个表
@@ -57,8 +61,12 @@ public:
   RC open(const char *meta_file, const char *base_dir, CLogManager *clog_manager);
 
   RC insert_record(Trx *trx, int value_num, const Value *values);
+  RC insert_records(Trx *trx, int valuelist_num, const ValueList *valuelists);
+  RC update_record(Trx *trx, char *const *attribute_name, const Value *values, int attr_num,
+                   int condition_num, const Condition conditions[], int *updated_count);
   RC update_record(Trx *trx, const char *attribute_name, const Value *value, int condition_num,
-      const Condition conditions[], int *updated_count);
+                   const Condition conditions[], int *updated_count);
+  RC update_record(Trx *trx, Record *record, bool has_null);
   RC delete_record(Trx *trx, ConditionFilter *filter, int *deleted_count);
   RC delete_record(Trx *trx, Record *record);
   RC recover_delete_record(Record *record);
@@ -66,7 +74,9 @@ public:
   RC scan_record(Trx *trx, ConditionFilter *filter, int limit, void *context,
       void (*record_reader)(const char *data, void *context));
 
-  RC create_index(Trx *trx, const char *index_name, const char *attribute_name);
+  RC create_index(Trx *trx, const char *index_name, char *const *attribute_names, int attribute_num, bool unique);
+  // RC create_index(Trx *trx, const char *index_name, const char *attribute_name, bool unique);
+  void show_index(std::stringstream &ss);
 
   RC get_record_scanner(RecordFileScanner &scanner);
 
@@ -95,7 +105,8 @@ private:
       RC (*record_reader)(Record *record, void *context));
   IndexScanner *find_index_for_scan(const ConditionFilter *filter);
   IndexScanner *find_index_for_scan(const DefaultConditionFilter &filter);
-  RC insert_record(Trx *trx, Record *record);
+  RC insert_record(Trx *trx, Record *record, bool has_null);
+
 
 public:
   RC recover_insert_record(Record *record);
@@ -104,8 +115,10 @@ private:
   friend class RecordUpdater;
   friend class RecordDeleter;
 
-  RC insert_entry_of_indexes(const char *record, const RID &rid);
+  RC insert_entry_of_indexes(const char *record, const RID &rid, bool has_null);
+  RC update_entry_of_indexes(const char *old_record, const char *new_record, const RID &rid, int *update_cnt, bool has_null);
   RC delete_entry_of_indexes(const char *record, const RID &rid, bool error_on_not_exists);
+  RC delete_entry_of_indexes(const char *record, const RID &rid, int num, bool error_on_not_exists);
 
 private:
   RC init_record_handler(const char *base_dir);

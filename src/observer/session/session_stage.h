@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #ifndef __OBSERVER_SESSION_SESSIONSTAGE_H__
 #define __OBSERVER_SESSION_SESSIONSTAGE_H__
 
+#include <string>
 #include "common/seda/stage.h"
 #include "net/connection_context.h"
 #include "common/metrics/metrics.h"

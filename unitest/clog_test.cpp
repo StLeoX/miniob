@@ -38,7 +38,7 @@ Record *gen_del_record(int32_t page_num, int32_t slot_num)
 
 TEST(test_clog, test_clog)
 {
-  CLogManager *log_mgr = new CLogManager("/home/huhaosheng.hhs/Alibaba/miniob");
+  CLogManager *log_mgr = new CLogManager("/tmp/miniob");
 
   CLogRecord *log_rec[6];
   CLogRecord *log_mtr_rec = nullptr;

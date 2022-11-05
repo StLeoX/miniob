@@ -25,22 +25,22 @@ class InsertStmt : public Stmt
 public:
 
   InsertStmt() = default;
-  InsertStmt(Table *table, const Value *values, int value_amount);
+  InsertStmt(Table *table, const ValueList *valuelists, int valuelist_amount);
 
   StmtType type() const override {
     return StmtType::INSERT;
   }
 public:
-  static RC create(Db *db, const Inserts &insert_sql, Stmt *&stmt);
+  static RC create(Db *db, Inserts &insert_sql, Stmt *&stmt);
 
 public:
   Table *table() const {return table_;}
-  const Value *values() const { return values_; }
-  int value_amount() const { return value_amount_; }
+  const ValueList *valuelists() const { return valuelists_; }
+  int valuelist_amount() const { return valuelist_amount_; }
 
 private:
   Table *table_ = nullptr;
-  const Value *values_ = nullptr;
-  int value_amount_ = 0;
+  const ValueList *valuelists_ = nullptr;
+  int valuelist_amount_ = 0;
 };
 

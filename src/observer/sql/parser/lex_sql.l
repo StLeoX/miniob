@@ -7,13 +7,15 @@ struct ParserContext;
 #include "yacc_sql.tab.h"
 extern int atoi();
 extern double atof();
+//{QUOTE}[\40\42\47A-Za-z0-9_/\.\-]*{QUOTE}            yylval->string=strdup(yytext); RETURN_TOKEN(SSS);
 
 #if YYDEBUG > 0
 #define debug_printf  printf
 #else
 #define debug_printf(...)
 #endif // YYDEBUG
-
+/*
+*/
 #define RETURN_TOKEN(token) debug_printf("%s\n",#token);return token
 %}
 
@@ -41,7 +43,29 @@ QUOTE            [\'\"]
 ";"                                                  RETURN_TOKEN(SEMICOLON);
 {DOT}                                                RETURN_TOKEN(DOT);
 "*"                                                  RETURN_TOKEN(STAR);
+{QUOTE}[0-9][0-9]?[0-9]?[0-9]?\-([0-9]?[0-9])\-([0-9]?[0-9]){QUOTE} yylval->string=strdup(yytext); RETURN_TOKEN(DATE_STR);  // 使用正则表达式过滤DATE。需要在yacc文件中增加
+[Dd][Aa][Tt][Ee]                                     RETURN_TOKEN(DATE_T);
+[Mm][Aa][Xx]                                         RETURN_TOKEN(MAX);
+[Cc][Oo][Uu][Nn][Tt]                                 RETURN_TOKEN(COUNT);
+[Ii][Nn]                                             RETURN_TOKEN(IN);
+[Hh][Aa][Vv][Ii][Nn][Gg]                             RETURN_TOKEN(HAVING);
+[Ee][Xx][Ii][Ss][Tt][Ss]                             RETURN_TOKEN(EXISTS);
+[Nn][Uu][Ll][Ll][Aa][Bb][Ll][Ee]                     RETURN_TOKEN(NULLABLE);
+[Tt][Ee][Xx][Tt]                                     RETURN_TOKEN(TEXT_T);
+[Nn][Uu][Ll][Ll]                                     RETURN_TOKEN(NULL_V);
+[Ii][Nn][Nn][Ee][Rr]                                 RETURN_TOKEN(INNER);
+[Jj][Oo][Ii][Nn]                                     RETURN_TOKEN(JOIN);
+[Ii][Ss]                                             RETURN_TOKEN(IS);
+[Oo][Rr][Dd][Ee][Rr]                                 RETURN_TOKEN(ORDER);
+[Gg][Rr][Oo][Uu][Pp]                                 RETURN_TOKEN(GROUP);
+[Bb][Yy]                                             RETURN_TOKEN(BY);
+[Nn][Oo][Tt]                                         RETURN_TOKEN(NOT);
+[Mm][Ii][Nn]                                         RETURN_TOKEN(MIN);
+[Ll][Ii][Kk][Ee]                                     RETURN_TOKEN(LIKE);
+[Aa][Vv][Gg]                                         RETURN_TOKEN(AVG);
+[Ss][Uu][Mm]                                         RETURN_TOKEN(SUM);
 [Ee][Xx][Ii][Tt]                                     RETURN_TOKEN(EXIT);
+[Uu][Nn][Ii][Qq][Uu][Ee]                             RETURN_TOKEN(UNIQUE_T);
 [Hh][Ee][Ll][Pp]                                     RETURN_TOKEN(HELP);
 [Dd][Ee][Ss][Cc]                                     RETURN_TOKEN(DESC);
 [Cc][Rr][Ee][Aa][Tt][Ee]                             RETURN_TOKEN(CREATE);
@@ -69,20 +93,25 @@ QUOTE            [\'\"]
 [Cc][Hh][Aa][Rr]                                     RETURN_TOKEN(STRING_T);
 [Ff][Ll][Oo][Aa][Tt]                                 RETURN_TOKEN(FLOAT_T);
 [Ll][Oo][Aa][Dd]                                     RETURN_TOKEN(LOAD);
-[Dd][Aa][Tt][Aa]                                     RETURN_TOKEN(DATA);
+[Dd][Aa][Tt][Aa]                                     RETURN_TOKEN(DATA_T);
 [Ii][Nn][Ff][Ii][Ll][Ee]                             RETURN_TOKEN(INFILE);
+[Aa][Ss][Cc]                                         RETURN_TOKEN(ASC);
+{QUOTE}[ \40\42A-Za-z0-9_/\.\-\%]*{QUOTE}            yylval->string=strdup(yytext); RETURN_TOKEN(SSS);
 {ID}                                                 yylval->string=strdup(yytext); RETURN_TOKEN(ID);
 "("                                                  RETURN_TOKEN(LBRACE);
 ")"                                                  RETURN_TOKEN(RBRACE);
 
+"+"                                                  RETURN_TOKEN(ADD);
+"-"                                                  RETURN_TOKEN(SUB);
+"/"                                                  RETURN_TOKEN(DIV);
 ","                                                  RETURN_TOKEN(COMMA);
 "="                                                  RETURN_TOKEN(EQ);
 "<="                                                 RETURN_TOKEN(LE);
 "<>"                                                 RETURN_TOKEN(NE);
+"!="                                                 RETURN_TOKEN(NE);
 "<"                                                  RETURN_TOKEN(LT);
 ">="                                                 RETURN_TOKEN(GE);
 ">"                                                  RETURN_TOKEN(GT);
-{QUOTE}[\40\42\47A-Za-z0-9_/\.\-]*{QUOTE}            yylval->string=strdup(yytext); RETURN_TOKEN(SSS);
 
 .                                                    printf("Unknown character [%c]\n",yytext[0]); return yytext[0];
 %%

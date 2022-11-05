@@ -22,6 +22,8 @@ See the Mulan PSL v2 for more details. */
 #include <time.h>
 #include <string>
 #include <mutex>
+#include <list>
+#include <set>
 #include <unordered_map>
 
 #include "rc.h"
@@ -38,6 +40,9 @@ class DiskBufferPool;
 #define BP_PAGE_SIZE (1 << 14)
 #define BP_PAGE_DATA_SIZE (BP_PAGE_SIZE - sizeof(PageNum))
 #define BP_FILE_SUB_HDR_SIZE (sizeof(BPFileSubHeader))
+
+// trx mode
+extern bool trx_flag;
 
 struct Page {
   PageNum page_num;

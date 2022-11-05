@@ -76,9 +76,12 @@ Trx::~Trx()
 RC Trx::insert_record(Table *table, Record *record)
 {
   RC rc = RC::SUCCESS;
+  // start_if_not_started();
+
   // 先校验是否以前是否存在过(应该不会存在)
   Operation *old_oper = find_operation(table, record->rid());
   if (old_oper != nullptr) {
+    LOG_ERROR("operation: %d page %d slot %d", old_oper->type(), old_oper->page_num(), old_oper->slot_num());
     if (old_oper->type() == Operation::Type::DELETE) {
       delete_operation(table, record->rid());
     } else {
@@ -86,8 +89,6 @@ RC Trx::insert_record(Table *table, Record *record)
     }
   }
 
-  // start_if_not_started();
-  
   // 记录到operations中
   insert_operation(table, Operation::Type::INSERT, record->rid());
   return rc;
@@ -96,9 +97,11 @@ RC Trx::insert_record(Table *table, Record *record)
 RC Trx::delete_record(Table *table, Record *record)
 {
   RC rc = RC::SUCCESS;
+  // 先校验是否以前是否存在过(应该不会存在)
   start_if_not_started();
   Operation *old_oper = find_operation(table, record->rid());
   if (old_oper != nullptr) {
+    LOG_ERROR("operation: %d page %d slot %d", old_oper->type(), old_oper->page_num(), old_oper->slot_num());
     if (old_oper->type() == Operation::Type::INSERT) {
       delete_operation(table, record->rid());
       return RC::SUCCESS;
@@ -111,21 +114,21 @@ RC Trx::delete_record(Table *table, Record *record)
   return rc;
 }
 
-void Trx::set_record_trx_id(Table *table, Record &record, int32_t trx_id, bool deleted) const
+void Trx::set_record_trx_id(Table *table, Record &record, int32_t trxid, bool deleted) const
 {
   const FieldMeta *trx_field = table->table_meta().trx_field();
   int32_t *ptrx_id = (int32_t *)(record.data() + trx_field->offset());
   if (deleted) {
-    trx_id |= DELETED_FLAG_BIT_MASK;
+    trxid |= DELETED_FLAG_BIT_MASK;
   }
-  *ptrx_id = trx_id;
+  *ptrx_id = trxid;
 }
 
-void Trx::get_record_trx_id(Table *table, const Record &record, int32_t &trx_id, bool &deleted)
+void Trx::get_record_trx_id(Table *table, const Record &record, int32_t &trxid, bool &deleted)
 {
   const FieldMeta *trx_field = table->table_meta().trx_field();
   int32_t trx = *(int32_t *)(record.data() + trx_field->offset());
-  trx_id = trx & TRX_ID_BIT_MASK;
+  trxid = trx & TRX_ID_BIT_MASK;
   deleted = (trx & DELETED_FLAG_BIT_MASK) != 0;
 }
 
@@ -139,6 +142,7 @@ Operation *Trx::find_operation(Table *table, const RID &rid)
   OperationSet &table_operations = table_operations_iter->second;
   Operation tmp(Operation::Type::UNDEFINED, rid);
   OperationSet::iterator operation_iter = table_operations.find(tmp);
+  LOG_INFO("operation p:%p set size %d", table, table_operations.size());
   if (operation_iter == table_operations.end()) {
     return nullptr;
   }
@@ -147,6 +151,7 @@ Operation *Trx::find_operation(Table *table, const RID &rid)
 
 void Trx::insert_operation(Table *table, Operation::Type type, const RID &rid)
 {
+  LOG_INFO("table %s p:%p operation: %d, %s", table->name(), table, type, rid.to_string().c_str());
   OperationSet &table_operations = operations_[table];
   table_operations.emplace(type, rid);
 }

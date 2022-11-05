@@ -14,20 +14,27 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/stmt/insert_stmt.h"
 #include "common/log/log.h"
+#include "sql/parser/parse_defs.h"
 #include "storage/common/db.h"
 #include "storage/common/table.h"
+#include <cstddef>
 
-InsertStmt::InsertStmt(Table *table, const Value *values, int value_amount)
-  : table_ (table), values_(values), value_amount_(value_amount)
+InsertStmt::InsertStmt(Table *table, const ValueList *valuelists, int valuelist_amount)
+  : table_ (table), valuelists_(valuelists), valuelist_amount_(valuelist_amount)
 {}
 
-RC InsertStmt::create(Db *db, const Inserts &inserts, Stmt *&stmt)
+RC InsertStmt::create(Db *db, Inserts &inserts, Stmt *&stmt)
 {
   const char *table_name = inserts.relation_name;
-  if (nullptr == db || nullptr == table_name || inserts.value_num <= 0) {
-    LOG_WARN("invalid argument. db=%p, table_name=%p, value_num=%d", 
-             db, table_name, inserts.value_num);
+  if (nullptr == db || nullptr == table_name) {
+    LOG_WARN("invalid argument. db=%p, table_name=%p",
+             db, table_name);
     return RC::INVALID_ARGUMENT;
+  }
+  for (size_t i = 0; i < inserts.valuelist_num; i++) {
+    if (inserts.valuelist[i].value_num <= 0) {
+      return RC::INVALID_ARGUMENT;
+    }
   }
 
   // check whether the table exists
@@ -38,29 +45,45 @@ RC InsertStmt::create(Db *db, const Inserts &inserts, Stmt *&stmt)
   }
 
   // check the fields number
-  const Value *values = inserts.values;
-  const int value_num = inserts.value_num;
+  ValueList *valuelists = inserts.valuelist;
+  int valuelist_num = inserts.valuelist_num;
   const TableMeta &table_meta = table->table_meta();
   const int field_num = table_meta.field_num() - table_meta.sys_field_num();
-  if (field_num != value_num) {
-    LOG_WARN("schema mismatch. value num=%d, field num in schema=%d", value_num, field_num);
-    return RC::SCHEMA_FIELD_MISSING;
-  }
+  for (int i = 0; i < valuelist_num; i++) {
+    Value *values = valuelists[i].values;
+    int value_num = valuelists[i].value_num;
+    if (field_num != value_num) {
+      LOG_WARN("schema mismatch. value num=%d, field num in schema=%d", value_num, field_num);
+      return RC::SCHEMA_FIELD_MISSING;
+    }
+    // check fields type
+    const int sys_field_num = table_meta.sys_field_num();
+    for (int i = 0; i < value_num; i++) {
+      const FieldMeta *field_meta = table_meta.field(i + sys_field_num);
+      const AttrType field_type = field_meta->type();
+      const AttrType value_type = values[i].type;
 
-  // check fields type
-  const int sys_field_num = table_meta.sys_field_num();
-  for (int i = 0; i < value_num; i++) {
-    const FieldMeta *field_meta = table_meta.field(i + sys_field_num);
-    const AttrType field_type = field_meta->type();
-    const AttrType value_type = values[i].type;
-    if (field_type != value_type) { // TODO try to convert the value type to field type
-      LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d", 
-               table_name, field_meta->name(), field_type, value_type);
-      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      assert(!(value_type == AttrType::NULLS) ||
+             (((char *)values[i].data)[field_meta->len() - 1] == 1));
+
+      if (value_type == AttrType::NULLS && !field_meta->nullable()) {
+        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      }
+
+      if (values[i].type == DATES && *(int*)values[i].data == -1) {
+        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      }
+      // should convert value before insertion
+      // TODO try to convert the value type to field type
+      if (field_type != value_type && !convert_type(field_meta, values+i)) {
+        LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
+                 table_name, field_meta->name(), field_type, value_type);
+        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+      }
     }
   }
 
   // everything alright
-  stmt = new InsertStmt(table, values, value_num);
+  stmt = new InsertStmt(table, valuelists, valuelist_num);
   return RC::SUCCESS;
 }

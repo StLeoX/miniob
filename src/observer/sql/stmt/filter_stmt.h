@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include <vector>
 #include <unordered_map>
+#include <string>
 #include "rc.h"
 #include "sql/parser/parse_defs.h"
 #include "sql/stmt/stmt.h"
@@ -85,13 +86,19 @@ public:
     return filter_units_;
   }
 
+  std::vector<FilterUnit *> &filter_units()
+  {
+    return filter_units_;
+  }
+
+  void push(FilterUnit *unit) { filter_units_.push_back(unit); }
+
 public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-			const Condition *conditions, int condition_num,
-			FilterStmt *&stmt);
+                   Condition *conditions, int condition_num, FilterStmt *&stmt);
 
   static RC create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-			       const Condition &condition, FilterUnit *&filter_unit);
+                               Condition &condition, FilterUnit *&filter_unit);
 
 private:
   std::vector<FilterUnit *>  filter_units_; // 默认当前都是AND关系

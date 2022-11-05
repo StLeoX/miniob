@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #pragma once
 
+#include <cstring>
 #include <memory>
 #include <vector>
 
@@ -21,6 +22,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse.h"
 #include "sql/expr/tuple_cell.h"
 #include "sql/expr/expression.h"
+#include "sql/parser/parse_defs.h"
 #include "storage/record/record.h"
 
 class Table;
@@ -70,6 +72,7 @@ public:
   virtual RC  find_cell(const Field &field, TupleCell &cell) const = 0;
 
   virtual RC  cell_spec_at(int index, const TupleCellSpec *&spec) const = 0;
+  virtual const Record &get_record() const = 0;
 };
 
 class RowTuple : public Tuple
@@ -87,6 +90,10 @@ public:
   void set_record(Record *record)
   {
     this->record_ = record;
+  }
+
+  const Record &get_record() const override {
+    return *record_;
   }
 
   void set_schema(const Table *table, const std::vector<FieldMeta> *fields)
@@ -113,9 +120,12 @@ public:
     const TupleCellSpec *spec = speces_[index];
     FieldExpr *field_expr = (FieldExpr *)spec->expression();
     const FieldMeta *field_meta = field_expr->field().meta();
-    cell.set_type(field_meta->type());
     cell.set_data(this->record_->data() + field_meta->offset());
     cell.set_length(field_meta->len());
+    cell.set_type(field_meta->type());
+    if (this->record_->data()[field_meta->offset() + field_meta->len()-1] == 1) {
+      cell.set_type(NULLS);
+    }
     return RC::SUCCESS;
   }
 
@@ -189,6 +199,10 @@ public:
   void set_tuple(Tuple *tuple)
   {
     this->tuple_ = tuple;
+  }
+
+  const Record &get_record() const override {
+    return tuple_->get_record();
   }
 
   void add_cell_spec(TupleCellSpec *spec)

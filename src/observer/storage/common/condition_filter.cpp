@@ -15,8 +15,11 @@ See the Mulan PSL v2 for more details. */
 #include <stddef.h>
 #include <math.h>
 #include "condition_filter.h"
+#include "sql/parser/parse_defs.h"
 #include "storage/record/record_manager.h"
+#include "sql/stmt/stmt.h"
 #include "common/log/log.h"
+#include "util/util.h"
 #include "storage/common/table.h"
 
 using namespace common;
@@ -36,13 +39,19 @@ DefaultConditionFilter::DefaultConditionFilter()
   right_.attr_offset = 0;
   right_.value = nullptr;
 }
+
 DefaultConditionFilter::~DefaultConditionFilter()
 {}
 
-RC DefaultConditionFilter::init(const ConDesc &left, const ConDesc &right, AttrType attr_type, CompOp comp_op)
+RC DefaultConditionFilter::init(
+    const ConDesc &left, const ConDesc &right, AttrType type_left, AttrType type_right, CompOp comp_op)
 {
-  if (attr_type < CHARS || attr_type > FLOATS) {
-    LOG_ERROR("Invalid condition with unsupported attribute type: %d", attr_type);
+  if (type_left < CHARS || type_right > FLOATS) {
+    LOG_ERROR("Invalid condition with unsupported attribute type: %d", type_left);
+    return RC::INVALID_ARGUMENT;
+  }
+  if (type_right < CHARS || type_right > FLOATS) {
+    LOG_ERROR("Invalid condition with unsupported attribute type: %d", type_right);
     return RC::INVALID_ARGUMENT;
   }
 
@@ -53,7 +62,8 @@ RC DefaultConditionFilter::init(const ConDesc &left, const ConDesc &right, AttrT
 
   left_ = left;
   right_ = right;
-  attr_type_ = attr_type;
+  left_type_ = type_left;
+  right_type_ = type_right;
   comp_op_ = comp_op;
   return RC::SUCCESS;
 }
@@ -85,6 +95,10 @@ RC DefaultConditionFilter::init(Table &table, const Condition &condition)
     left.value = condition.left_value.data;  // 校验type 或者转换类型
     type_left = condition.left_value.type;
 
+    if (type_left == DATES && *(int *)left.value == -1) {
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+
     left.attr_length = 0;
     left.attr_offset = 0;
   }
@@ -106,67 +120,143 @@ RC DefaultConditionFilter::init(Table &table, const Condition &condition)
     right.value = condition.right_value.data;
     type_right = condition.right_value.type;
 
+    if (type_right == DATES && *(int *)right.value == -1) {
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+
     right.attr_length = 0;
     right.attr_offset = 0;
   }
 
   // 校验和转换
-  //  if (!field_type_compare_compatible_table[type_left][type_right]) {
-  //    // 不能比较的两个字段， 要把信息传给客户端
-  //    return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-  //  }
-  // NOTE：这里没有实现不同类型的数据比较，比如整数跟浮点数之间的对比
-  // 但是选手们还是要实现。这个功能在预选赛中会出现
-  if (type_left != type_right) {
+  if (!Stmt::check_type(type_left, type_right)) {
     return RC::SCHEMA_FIELD_TYPE_MISMATCH;
   }
 
-  return init(left, right, type_left, condition.comp);
+  // NOTE：这里没有实现不同类型的数据比较，比如整数跟浮点数之间的对比
+  // 但是选手们还是要实现。这个功能在预选赛中会出现
+  return init(left, right, type_left, type_right, condition.comp);
 }
 
 bool DefaultConditionFilter::filter(const Record &rec) const
 {
   char *left_value = nullptr;
   char *right_value = nullptr;
+  bool left_is_null = left_type_ == AttrType::NULLS;
+  bool right_is_null = right_type_ == AttrType::NULLS;
 
-  if (left_.is_attr) {  // value
+  if (left_.is_attr) {
     left_value = (char *)(rec.data() + left_.attr_offset);
+    left_is_null |= left_value[left_.attr_length - 1];
   } else {
     left_value = (char *)left_.value;
   }
 
   if (right_.is_attr) {
     right_value = (char *)(rec.data() + right_.attr_offset);
+    right_is_null |= right_value[right_.attr_length - 1];
   } else {
     right_value = (char *)right_.value;
   }
 
   int cmp_result = 0;
-  switch (attr_type_) {
-    case CHARS: {  // 字符串都是定长的，直接比较
-      // 按照C字符串风格来定
-      cmp_result = strcmp(left_value, right_value);
-    } break;
-    case INTS: {
-      // 没有考虑大小端问题
-      // 对int和float，要考虑字节对齐问题,有些平台下直接转换可能会跪
-      int left = *(int *)left_value;
-      int right = *(int *)right_value;
-      cmp_result = left - right;
-    } break;
-    case FLOATS: {
-      float left = *(float *)left_value;
-      float right = *(float *)right_value;
-      float result = left - right;
-      cmp_result = result >= 0 ? ceil(result) : floor(result);
-    } break;
-    default: {
+
+  if (left_is_null && right_is_null && comp_op_ == IS_EQUAL) {
+    return true;
+  } else if (!left_is_null && right_is_null && comp_op_ == IS_NOT_EQUAL) {
+    return true;
+  } else if (left_is_null && (comp_op_ == VALUE_EXISTS || comp_op_ == VALUE_NOT_EXISTS)) {
+    return true; // 针对 comp_op_==exists，总是有left_is_null
+  } else if (left_is_null || right_is_null) {
+    return false;
+  }
+
+  if (left_type_ == right_type_) {
+    switch (left_type_) {
+      case CHARS: {
+        // 字符串都是定长的，直接比较
+        // 按照C字符串风格来定
+        if (comp_op_ == STR_LIKE) {
+          return string_like(left_value, right_value);
+        } else if (comp_op_ == STR_NOT_LIKE) {
+          return !string_like(left_value, right_value);
+        }
+        cmp_result = strcmp(left_value, right_value);
+      } break;
+      case INTS: {
+        // 没有考虑大小端问题
+        // 对int和float，要考虑字节对齐问题,有些平台下直接转换可能会跪
+        int left = *(int *)left_value;
+        int right = *(int *)right_value;
+        cmp_result = left - right;
+      } break;
+      case FLOATS: {
+        float left = *(float *)left_value;
+        float right = *(float *)right_value;
+        float result = left - right;
+        cmp_result = result >= 0 ? ceil(result) : floor(result);
+      } break;
+      case DATES: {
+        int left = *(int *)left_value;
+        int right = *(int *)right_value;
+        cmp_result = left - right;
+      }
+      default:
+        break;
+    }
+  } else if (left_type_ == FLOATS) {
+    float left = *(float *)left_value;
+    float right = 0;
+    switch (right_type_) {
+      case CHARS: {
+        right = Stmt::char_to_float(right_value);
+      } break;
+      case INTS: {
+        right = *(int *)right_value;
+      } break;
+      default: {
+      }
+    }
+    float res = left - right;
+    cmp_result = res >= 0 ? ceil(res) : floor(res);
+  } else if (left_type_ == INTS) {
+    switch (right_type_) {
+      case CHARS: {
+        int left = *(int *)left_value;
+        int right = Stmt::char_to_int(right_value);
+        cmp_result = left - right;
+      } break;
+      case FLOATS: {
+        float left = *(int *)left_value;
+        float right = *(float *)right_value;
+        float result = left - right;
+        cmp_result = result >= 0 ? ceil(result) : floor(result);
+      }
+      default:
+        break;
+    }
+  } else if (left_type_ == CHARS) {
+    switch (right_type_) {
+      case INTS: {
+        int left = Stmt::char_to_int(left_value);
+        int right = *(int *)right_value;
+        cmp_result = left - right;
+      } break;
+      case FLOATS: {
+        float left = Stmt::char_to_float(left_value);
+        float right = *(float *)right_value;
+        float result = left - right;
+        cmp_result = result >= 0 ? ceil(result) : floor(result);
+      } break;
+      default:
+        break;
     }
   }
 
   switch (comp_op_) {
     case EQUAL_TO:
-      return 0 == cmp_result;
+    case IS_EQUAL:
+      return cmp_result == 0;
     case LESS_EQUAL:
       return cmp_result <= 0;
     case NOT_EQUAL:
@@ -201,6 +291,7 @@ RC CompositeConditionFilter::init(const ConditionFilter *filters[], int filter_n
   memory_owner_ = own_memory;
   return RC::SUCCESS;
 }
+
 RC CompositeConditionFilter::init(const ConditionFilter *filters[], int filter_num)
 {
   return init(filters, filter_num, false);
