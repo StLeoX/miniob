@@ -26,6 +26,10 @@ MiniOB参赛项目
 
 [miniob 题目描述](docs/miniob_topics.md)
 
-## 后记
+## 开发进度
+- [ ] expression
+- [ ] complex-sub-query
+- [ ] function
+- [ ] alias
+- [x] other
 
-[MiniOB2022后记](docs/MiniOB2022后记.md)
