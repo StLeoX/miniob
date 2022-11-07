@@ -73,8 +73,7 @@ RC InsertStmt::create(Db *db, Inserts &inserts, Stmt *&stmt)
       if (values[i].type == DATES && *(int*)values[i].data == -1) {
         return RC::SCHEMA_FIELD_TYPE_MISMATCH;
       }
-      // should convert value before insertion
-      // TODO try to convert the value type to field type
+
       if (field_type != value_type && !convert_type(field_meta, values+i)) {
         LOG_WARN("field type mismatch. table=%s, field=%s, field type=%d, value_type=%d",
                  table_name, field_meta->name(), field_type, value_type);

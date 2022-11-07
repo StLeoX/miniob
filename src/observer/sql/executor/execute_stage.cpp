@@ -666,18 +666,6 @@ RC ExecuteStage::do_help(SQLStageEvent *sql_event)
   return RC::SUCCESS;
 }
 
-// unused
-void fix_create_table(CreateTable &ct){
-  // step 1. 通过将用户建表时输入的text字段，直接替换为char(4096)来实现text类型
-  for (size_t i = 0; i < ct.attribute_count;i++){
-    auto &attr = ct.attributes[i];
-    if(attr.type == AttrType::TEXTS){
-      attr.type = AttrType::CHARS;
-      attr.length = 4096;
-    }
-  }
-}
-
 RC ExecuteStage::do_create_table(SQLStageEvent *sql_event)
 {
   CreateTable &create_table = sql_event->query()->sstr.create_table;
@@ -866,7 +854,7 @@ RC ExecuteStage::check_updates(Db *db, Updates &updates)
   return RC::SUCCESS;
 }
 
-RC ExecuteStage::do_update_table(SQLStageEvent *sql_event) // TODO: clog for record insert
+RC ExecuteStage::do_update_table(SQLStageEvent *sql_event)
 {
   Updates &updates = sql_event->query()->sstr.update;
   SessionEvent *session_event = sql_event->session_event();
@@ -1134,13 +1122,7 @@ bool is_null(const TupleCell &cell)
 }
 
 TupleSet::TupleSet(const Tuple *t, Table *table) {
-  // table_num_ = 1;
   data_ = std::string(t->get_record().data(), table->table_meta().record_size());
-  // for (const FieldMeta &meta : *table->table_meta().field_metas()) {
-  //   FieldMeta *new_meta = new FieldMeta;
-  //   new_meta->init(meta.name(), meta.type(), meta.offset(), meta.len(), meta.visible(), meta.nullable());
-  //   metas_.push_back(Field(table, new_meta));
-  // }
   for (int i = 0; i < t->cell_num(); i++) {
     TupleCell cell;
     t->cell_at(i, cell);
@@ -1156,11 +1138,6 @@ TupleSet::TupleSet(const Tuple *t, Table *table) {
 
 TupleSet::TupleSet(const TupleSet *t) {
   cells_ = t->cells_;
-  // for (auto &field : t->metas_) {
-  //   metas_.push_back(Field(field.table(), field.metac()->copy()));
-  // }
-  // metas_ = t->metas_;
-  // table_num_ = t->table_num_;
   data_ = t->data_;
 }
 
@@ -1178,18 +1155,7 @@ TupleSet *TupleSet::copy() const {
 
 TupleSet *TupleSet::generate_combine(const TupleSet *t2) {
   TupleSet *res = this->copy();
-  // res->table_num_ += t2->table_num_;
   res->data_ += t2->data();
-  // int off = 0;
-  // for (auto &meta : res->metas_) {
-  //   off += meta.meta()->len();
-  // }
-  // for (auto meta : t2->metas_) {
-  //   // meta.meta()->set_offset(off + meta.meta()->offset());
-  //   Field field(meta.table(), meta.metac()->copy());
-  //   field.meta()->set_offset(off + field.meta()->offset());
-  //   res->metas_.push_back(field);
-  // }
   for (auto cell : t2->cells_) {
     res->cells_.push_back(cell);
   }
@@ -1204,40 +1170,11 @@ void TupleSet::filter_fields(const std::vector<int> &orders) {
     data_ += std::string(cells[i].data(), cells[i].length());
   }
   cells_.swap(cells);
-  // std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<AggreType, int>>> mp;
-  // std::vector<Field> metas(fields.size());
-  // std::vector<TupleCell> cells(fields.size());
-  // data_.clear();
-  // for (size_t i = 0; i < fields.size(); i++) {
-  //   mp[fields[i].table_name()][fields[i].field_name()][fields[i].aggr_type()] = i+1;
-  // }
-
-  // table_num_ = mp.size();
-
-  // for (size_t i = 0; i < metas_.size(); i++) {
-  //   auto &p = metas_[i];
-  //   int j = mp[p.table_name()][p.meta()->name()][p.aggr_type()];
-  //   if (j > 0) {
-  //     cells[j-1] = cells_[i];
-  //     metas[j-1] = metas_[i];
-  //   }
-  // }
-
-  // cells_.swap(cells);
-  // metas_.swap(metas);
-  // int offset = 0;
-  // for (size_t i = 0; i < cells_.size(); i++) {
-  //   metas_[i].meta()->set_offset(offset);
-  //   offset += metas_[i].meta()->len();
-  //   data_ += std::string(cells_[i].data(), metas_[i].meta()->len());
-  // }
 }
 
 // used for aggregate, and they have 5 bytes
 void TupleSet::push(const TupleCell &cell)
 {
-  // metas_.push_back(p);
-  // metas_.back().meta()->set_offset(5 + metas_.back().meta()->offset());
   cells_.push_back(cell);
   data_ += std::string(cell.data(), cell.length());
 }
@@ -1461,7 +1398,6 @@ bool Pretable::not_in(TupleCell &cell) const
   return true;
 }
 
-// todo
 bool Pretable::exists(TupleCell &cell) const
 {
   for (const auto &item : exists_results) {
@@ -1505,7 +1441,6 @@ Pretable& Pretable::operator=(Pretable&& t)
 
 RC Pretable::init(Table *table, FilterStmt *old_filter)
 {
-  // TODO: check how to use index scan
   FilterStmt *filter = get_sub_filter(table, old_filter);
   tables_.push_back(table);
 
@@ -2089,7 +2024,7 @@ RC Pretable::join(Pretable *pre2, FilterStmt *filter)
     Expression *right = unit->right();
     if (left->type() == ExprType::VALUE || right->type() == ExprType::VALUE) {
       continue;
-    } // TODO: NEED TO SWAP
+    }
     FieldExpr *left_field_expr = dynamic_cast<FieldExpr*>(left);
     FieldExpr *right_field_expr = dynamic_cast<FieldExpr*>(right);
     if (this->field(left_field_expr->field()) != nullptr &&
@@ -2351,7 +2286,6 @@ int PretableHash::get_value(const TupleCell &cell) {
       }
       return null_index_;
     default:
-      LOG_ERROR("WTF");
       return -1;
   }
 

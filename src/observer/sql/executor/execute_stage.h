@@ -91,7 +91,6 @@ private:
   Stage *mem_storage_stage_ = nullptr;
 };
 
-// TODO: check that we only need field name and table name
 class TupleSet {
  public:
   TupleSet() = default;
@@ -132,8 +131,6 @@ class TupleSet {
   std::string data_;
 };
 
-
-// TODO: store some aggregate meta info in Pretable
 class Pretable {
  public:
   Pretable() = default;
