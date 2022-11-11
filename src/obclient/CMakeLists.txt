@@ -1,5 +1,5 @@
 ADD_EXECUTABLE(obclient)
-MESSAGE("Begin to build " obclient)
+MESSAGE(STATUS "Begin " ${PROJECT_NAME})
 
 INCLUDE(CheckIncludeFiles)
 
@@ -21,13 +21,7 @@ ELSE ()
     MESSAGE ("readline is not found")
 ENDIF()
 
-FILE(GLOB_RECURSE ALL_SRC *.cpp)
-FOREACH (F ${ALL_SRC})
-
-    SET(PRJ_SRC ${PRJ_SRC} ${F})
-    MESSAGE("Use " ${F})
-
-ENDFOREACH (F)
+FILE(GLOB_RECURSE PRJ_SRC *.cpp)
 
 # 指定目标文件位置
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/../bin)

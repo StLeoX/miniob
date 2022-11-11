@@ -1,5 +1,5 @@
 PROJECT(observer)
-MESSAGE("Begin to build " ${PROJECT_NAME})
+MESSAGE(STATUS "Begin " ${PROJECT_NAME})
 MESSAGE(STATUS "This is PROJECT_BINARY_DIR dir " ${PROJECT_BINARY_DIR})
 MESSAGE(STATUS "This is PROJECT_SOURCE_DIR dir " ${PROJECT_SOURCE_DIR})
 
@@ -15,13 +15,9 @@ FILE(GLOB_RECURSE ALL_SRC *.cpp *.c)
 FILE(GLOB MAIN_SRC main.cpp)
 MESSAGE("MAIN SRC: " ${MAIN_SRC})
 FOREACH (F ${ALL_SRC})
-
     IF (NOT ${F} STREQUAL ${MAIN_SRC})
         SET(LIB_SRC ${LIB_SRC} ${F})
     ENDIF()
-
-    MESSAGE("Use " ${F})
-
 ENDFOREACH (F)
 
 SET(LIBRARIES common pthread dl event_pthreads event jsoncpp)

@@ -1,11 +1,7 @@
-PROJECT(test)
-MESSAGE("Begin to build " ${PROJECT_NAME})
+PROJECT(perf)
+MESSAGE(STATUS "Begin " ${PROJECT_NAME})
 MESSAGE(STATUS "This is PROJECT_BINARY_DIR dir " ${PROJECT_BINARY_DIR})
 MESSAGE(STATUS "This is PROJECT_SOURCE_DIR dir " ${PROJECT_SOURCE_DIR})
-
-
-# 可以获取父cmake的变量
-MESSAGE("${CMAKE_COMMON_FLAGS}")
 
 
 #INCLUDE_DIRECTORIES([AFTER|BEFORE] [SYSTEM] dir1 dir2 ...)
@@ -24,7 +20,6 @@ IF (DEFINED ENV{LD_LIBRARY_PATH})
 ELSE ()
     LINK_DIRECTORIES(/usr/local/lib)
 ENDIF ()
-
 
 
 #get_filename_component(<VAR> FileName

@@ -1,22 +1,11 @@
-
 PROJECT(common)
-MESSAGE("Begin to build " ${PROJECT_NAME})
+MESSAGE(STATUS "Begin " ${PROJECT_NAME})
 MESSAGE(STATUS "This is PROJECT_BINARY_DIR dir " ${PROJECT_BINARY_DIR})
 MESSAGE(STATUS "This is PROJECT_SOURCE_DIR dir " ${PROJECT_SOURCE_DIR})
 
 INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/..)
-#find_file() 只会找一个文件
-#AUX_SOURCE_DIRECTORY(. SRC_LIST)
-#FOREACH(F ${SRC_LIST})
-#    MESSAGE(${F})
-#ENDFOREACH(F)
 
 FILE(GLOB_RECURSE ALL_SRC  *.cpp)
-FOREACH(F ${ALL_SRC})
-    SET(SRC_LIST ${SRC_LIST} ${F})
-    MESSAGE("Use " ${F})
-ENDFOREACH(F)
-
 
 #SHARED，动态库
 #STATIC，静态库
@@ -26,7 +15,7 @@ ADD_LIBRARY(common_static STATIC ${ALL_SRC})
 # 没有SET_TARGET_PROPERTIES， 是不能同时build 静态库和动态库， 如果只build 一种库， 就不需要这个功能
 SET_TARGET_PROPERTIES(common_static PROPERTIES OUTPUT_NAME "common")
 GET_TARGET_PROPERTY(OUTPUT_VALUE common_static OUTPUT_NAME)
-MESSAGE(STATUS "This is the func_static OUTPUT_NAME:" ${OUTPUT_VALUE})
+MESSAGE(STATUS "This is the func_static OUTPUT_NAME " ${OUTPUT_VALUE})
 
 # 编译静态库时，自动会把同名的动态库给删除， 因此需要临时设置一下
 SET_TARGET_PROPERTIES(common PROPERTIES CLEAN_DIRECT_OUTPUT 1)
@@ -45,7 +34,7 @@ SET_TARGET_PROPERTIES(common PROPERTIES VERSION ${MAIJOR_VER}.${MINOR_VER}.${PAT
 
 SET(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/../../lib)
 # Target 必须在定义 ADD_EXECUTABLE 之后， programs 不受这个限制
-# TARGETS和PROGRAMS 的默认权限是OWNER_EXECUTE, GROUP_EXECUTE, 和WORLD_EXECUTE，即755权限， programs 都是处理脚步类
+# TARGETS和PROGRAMS 的默认权限是OWNER_EXECUTE, GROUP_EXECUTE, 和WORLD_EXECUTE，即755权限， programs 都是处理脚本
 # 类型分为RUNTIME／LIBRARY／ARCHIVE, prog
 INSTALL(TARGETS common common_static
         LIBRARY DESTINATION lib
@@ -54,10 +43,12 @@ INSTALL(TARGETS common common_static
 # 小心 安装的时候，不要变成include/func.h, 如果这样，第二次安装的时候会变成include/func.h/func.h
 # INSTALL(FILES func.h DESTINATION include/)
 
+#[[
 FILE(GLOB_RECURSE ALL_HEADER  *.h)
 FOREACH(F ${ALL_HEADER})
     file(RELATIVE_PATH RELAPATH_HEADER ${PROJECT_SOURCE_DIR} ${F}) # 获取相对路径
     get_filename_component(headDir ${RELAPATH_HEADER} DIRECTORY)
-    MESSAGE("Install " ${RELAPATH_HEADER} " to " ${CMAKE_INSTALL_PREFIX} "/" ${PROJECT_NAME} "/include/" ${headDir})
+    MESSAGE("Install " ${RELAPATH_HEADER} " to " ${CMAKE_INSTALL_PREFIX} "/miniob/include/miniob/" ${headDir})
     INSTALL(FILES ${RELAPATH_HEADER} DESTINATION include/${headDir})
 ENDFOREACH(F)
+]]

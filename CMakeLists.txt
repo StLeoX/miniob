@@ -2,21 +2,14 @@
 #INCLUDE(file1 [OPTIONAL])
 
 cmake_minimum_required(VERSION 3.10)
-set(CMAKE_CXX_STANDARD 14)
-#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-
 project(minidb)
-
-MESSAGE(STATUS "This is SOURCE dir " ${test_SOURCE_DIR})
-MESSAGE(STATUS "This is BINARY dir " ${test_BINARY_DIR})
-MESSAGE(STATUS "This is Project source dir " ${PROJECT_SOURCE_DIR})
-MESSAGE(STATUS "This is PROJECT_BINARY_DIR dir " ${PROJECT_BINARY_DIR})
-
-
+SET(CMAKE_CXX_STANDARD 14)
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+SET(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/cmake-build-debug) # by CLion
 #SET(LIBRARY_OUTPUT_PATH <路径>)
 
-MESSAGE(STATUS "HOME dir: $ENV{HOME}")
+MESSAGE(STATUS "Begin " ${PROJECT_NAME})
+
 #SET(ENV{变量名} 值)
 IF(WIN32)
     MESSAGE(STATUS "This is windows.")
@@ -37,9 +30,11 @@ ENDIF(WIN32)
 
 # This is for clangd plugin for vscode
 #SET(CMAKE_COMMON_FLAGS ${CMAKE_COMMON_FLAGS} " -Wstring-plus-int -Wsizeof-array-argument -Wunused-variable -Wmissing-braces")
-SET(CMAKE_COMMON_FLAGS "${CMAKE_COMMON_FLAGS} -Wall -DCMAKE_EXPORT_COMPILE_COMMANDS=1")
+SET(CMAKE_COMMON_FLAGS "${CMAKE_COMMON_FLAGS} -Wall -Wno-unused")
+
+SET(DEBUG ON)
 IF(DEBUG)
-    MESSAGE("DEBUG has been set as TRUE ${DEBUG}")
+    MESSAGE("DEBUG has been set as TRUE")
     #"${CMAKE_COMMON_FLAGS}  -O0 -g "  ${CMAKE_COMMON_FLAGS}最好在""以内，防止被cmake 增加了;
     SET(CMAKE_COMMON_FLAGS "${CMAKE_COMMON_FLAGS}  -O0 -g -DDEBUG ")
     ADD_DEFINITIONS(-DENABLE_DEBUG)
@@ -55,7 +50,7 @@ SET(CMAKE_CXX_FLAGS ${CMAKE_COMMON_FLAGS})
 SET(CMAKE_C_FLAGS ${CMAKE_COMMON_FLAGS})
 MESSAGE("CMAKE_CXX_FLAGS is " ${CMAKE_CXX_FLAGS})
 
-OPTION(ENABLE_ASAN OFF "Enable build with address sanitizer")
+OPTION(ENABLE_ASAN "Enable build with address sanitizer" OFF)
 
 IF (ENABLE_ASAN)
     SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer -fsanitize=address")
@@ -78,13 +73,13 @@ ADD_SUBDIRECTORY(deps)
 ADD_SUBDIRECTORY(src)
 ADD_SUBDIRECTORY(test/perf)
 
-OPTION(WITH_UNIT_TESTS "Compile miniob with unit tests" ON)
+OPTION(WITH_UNIT_TESTS "Compile miniob with unit tests" OFF)
 
 IF(WITH_UNIT_TESTS)
     ADD_SUBDIRECTORY(unitest)
 ENDIF()
 
-# install 准备安装的目录是cmakefile 的当前目录， 不是build 后生成的目录
+# install 准备安装的目录是CMAKE_SOURCE_DIR，不是CMAKE_BINARY_DIR
 # Files 默认权限OWNER_WRITE, OWNER_READ, GROUP_READ,和WORLD_READ，即644权限
 # INSTALL(FILES docs/README DESTINATION ./  )
 # INSTALL(DIRECTORY docs DESTINATION ./
@@ -98,26 +93,12 @@ INSTALL(DIRECTORY etc DESTINATION .
 		FILE_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)
 
 #INSTALL([[SCRIPT <file>] [CODE <code>]] [...])
-# script 表示安装时，调用cmake 脚步
-# code 表示安装时，执行cmake 命令， 例如
+# script 表示安装时，调用cmake脚本
+# code 表示安装时，执行cmake命令，例如
 INSTALL(CODE "MESSAGE(\"Sample install message.\")")
-# EXEC_PROGRAM make时执行命令
-#EXEC_PROGRAM(Executable [directory in which to run]
-#        [ARGS <arguments to executable>]
-#        [OUTPUT_VARIABLE <var>]
 
-
-
-
-# ADD_TEST与ENABLE_TESTING 参考书籍
-
+# EXEC_PROGRAM make之前执行命令
 #EXEC_PROGRAM(Executable [directory in which to run]
 #        [ARGS <arguments to executable>]
 #        [OUTPUT_VARIABLE <var>]
 #        [RETURN_VALUE <var>])
-# 生产make时，执行
-#EXEC_PROGRAM(ls ARGS "*.c" OUTPUT_VARIABLE LS_OUTPUT RETURN_VALUE
-#        LS_RVALUE)
-#IF(not LS_RVALUE)
-#    MESSAGE(STATUS "ls result: " ${LS_OUTPUT})
-#ENDIF(not LS_RVALUE)
